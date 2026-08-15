@@ -11,14 +11,22 @@ want to drill, then write each character stroke by stroke and get graded on stro
 |---|---|---|
 | **描红** (trace) | The character outline | Trace over it |
 | **听写** (dictation) | An empty box | Listen to the word, write it from memory |
+| **拼音** (typing) | The reading, e.g. `fàn guǎn` | Type the characters with your IME |
 
-In 听写 the word stays masked as `＿＿` and reveals one character at a time as you get
+拼音 mode needs a Chinese input method: switch your keyboard to pinyin input. Matching is
+prefix-based, so an IME committing characters at its own pace — or backspacing to fix a
+mistake — is handled without false errors.
+
+In 听写 and 拼音 the word stays masked as `＿＿` and reveals one character at a time as you get
 each one right, so you still get feedback without being shown the answer. `再听一次`
 replays the audio.
 
 ## Features
 
 - Enter any number of words — commas (`，` or `,`), spaces, and newlines all work
+- **🎲 Random 5** draws five words from a built-in bank of 186 common words
+  (people, places, time, food, feelings, actions, travel, weather, school, tech,
+  colours, position) — every character verified against the stroke-data index
 - Automatic progression: character → character → word → results
 - Pinyin shown per character and per word, and again on the results screen —
   toggleable, and context-aware (重要 reads *zhòng yào*, not *chóng yào*)
