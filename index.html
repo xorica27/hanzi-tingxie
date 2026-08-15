@@ -4,42 +4,91 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>汉字 Writing Quiz</title>
+<script>
+  /* Apply a saved theme before first paint, otherwise the page flashes the
+     system palette for a frame. Must stay inline and above the stylesheet. */
+  (function () {
+    try {
+      var t = localStorage.getItem('hq-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { /* opaque origin — fall back to system preference */ }
+  })();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.7.3/dist/hanzi-writer.min.js"></script>
 <style>
+  /* Light = 宣纸 rice paper with sumi ink and a 朱砂 seal-red accent.
+     Tokens live on bare :root so the palette is always fully defined;
+     the dark blocks below only override. Order matters: the media query
+     handles "system dark", [data-theme] handles an explicit choice. */
   :root {
-    --bg: #f7f6f3;
-    --panel: #ffffff;
-    --ink: #1f2328;
-    --muted: #6b7280;
-    --line: #e2e0da;
-    --accent: #b8442f;
-    --accent-soft: #fbeae6;
-    --ok: #2f7d5d;
-    --ok-soft: #e6f4ed;
-    --grid: #ddd8ce;
-    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.05);
+    --bg: #ebe0c9;
+    --panel: #f7f1e2;
+    --ink: #2f2822;
+    --muted: #7b7060;
+    --line: #d8c9ac;
+    --accent: #b8442f;          /* 朱砂 — seal vermilion */
+    --accent-soft: #f4e0d3;
+    --ok: #4c7a54;
+    --ok-soft: #e2ebd9;
+    --grid: #cdbc99;
+    --shadow: 0 1px 2px rgba(92,72,40,.10), 0 8px 24px rgba(92,72,40,.10);
+    --grain: .55;               /* paper tooth  */
+    --fibre: .7;                /* pulp streaks */
+    --sheen: .55;               /* uneven wash  */
+    /* Fibre tooth as inline SVG fractal noise — reused by every paper
+       surface via background-blend-mode, so no pseudo-element gymnastics. */
+    --tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='p' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.62' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23p)' opacity='0.62'/%3E%3C/svg%3E");
+    /* Lighter tooth for the sheets themselves — the full-strength grain
+       reads as dirt at this scale, not as 宣纸. */
+    --tex-soft: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='p' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23p)' opacity='0.26'/%3E%3C/svg%3E");
   }
+
+  /* system preference — but never override an explicit "light" choice */
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16181c;
-      --panel: #1e2126;
-      --ink: #e8e6e3;
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --panel: #1d2025;
+      --ink: #e8e4dc;
       --muted: #9aa1ab;
-      --line: #32363d;
+      --line: #333840;
       --accent: #e0705a;
       --accent-soft: #34211d;
       --ok: #62c398;
       --ok-soft: #1c2f27;
       --grid: #363b43;
       --shadow: 0 1px 3px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+      --grain: .10;             /* ink-stone, not paper */
+      --fibre: 0;
+      --sheen: 0;
+      --tex: none;
+      --tex-soft: none;
     }
+  }
+  /* explicit choice wins in both directions */
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --panel: #1d2025;
+    --ink: #e8e4dc;
+    --muted: #9aa1ab;
+    --line: #333840;
+    --accent: #e0705a;
+    --accent-soft: #34211d;
+    --ok: #62c398;
+    --ok-soft: #1c2f27;
+    --grid: #363b43;
+    --shadow: 0 1px 3px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+    --grain: .10;
+    --fibre: 0;
+    --sheen: 0;
+    --tex: none;
+    --tex-soft: none;
   }
 
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--bg);
+    background-color: var(--bg);
     color: var(--ink);
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
           "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -50,16 +99,50 @@
     -webkit-text-size-adjust: 100%;
   }
 
-  .wrap { width: 100%; max-width: 760px; }
+  /* Uneven wash — handmade paper is never one flat colour. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: var(--sheen);
+    background-image:
+      radial-gradient(ellipse 65% 45% at 18% 12%, rgba(255,253,244,.85), transparent 72%),
+      radial-gradient(ellipse 55% 50% at 88% 78%, rgba(198,176,134,.42), transparent 70%),
+      radial-gradient(ellipse 45% 35% at 60% 40%, rgba(255,250,235,.40), transparent 75%);
+  }
+
+  /* Fibre tooth: SVG fractal noise (inline, no network) multiplied over the
+     wash, plus faint directional pulp streaks. */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: var(--grain);
+    mix-blend-mode: multiply;
+    background-size: 180px 180px, auto, auto;
+    background-image:
+      var(--tex),
+      repeating-linear-gradient(97deg, transparent 0 5px, rgba(150,126,84,calc(.05 * var(--fibre))) 5px 6px),
+      repeating-linear-gradient(3deg,  transparent 0 11px, rgba(150,126,84,calc(.035 * var(--fibre))) 11px 12px);
+  }
+
+  .wrap { width: 100%; max-width: 760px; position: relative; z-index: 1; }
   h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .01em; }
   .sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
 
   .card {
-    background: var(--panel);
+    background-color: var(--panel);
+    background-image: var(--tex-soft);   /* the sheet itself has tooth */
+    background-size: 220px 220px;
+    background-blend-mode: multiply;
     border: 1px solid var(--line);
     border-radius: 12px;
     padding: 20px;
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,calc(.6 * var(--sheen)));
+  }
+
+  /* ---------- header + theme toggle ---------- */
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .top .sub { margin-bottom: 22px; }
+  #theme {
+    flex: none; padding: 7px 12px; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   }
 
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
@@ -119,9 +202,14 @@
     position: relative;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: var(--panel);
+    /* background-color only — the shorthand would wipe the texture layer
+       when .active / .done recolour the square */
+    background-color: var(--panel);
+    background-image: var(--tex-soft);
+    background-size: 220px 220px;
+    background-blend-mode: multiply;
     touch-action: none;              /* stop scroll-while-drawing on touch */
-    transition: border-color .2s, opacity .2s, background .2s;
+    transition: border-color .2s, opacity .2s, background-color .2s;
   }
   .cell::before {                     /* 米字格 practice guide */
     content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 8px;
@@ -138,8 +226,8 @@
   }
   .cell > div { position: relative; z-index: 1; }
   .cell.pending { opacity: .3; pointer-events: none; }
-  .cell.active  { border-color: var(--accent); background: var(--accent-soft); }
-  .cell.done    { border-color: var(--ok); background: var(--ok-soft); pointer-events: none; }
+  .cell.active  { border-color: var(--accent); background-color: var(--accent-soft); }
+  .cell.done    { border-color: var(--ok); background-color: var(--ok-soft); pointer-events: none; }
 
   .pinyin { text-align: center; font-size: 13px; color: var(--muted); margin: -10px 0 18px; min-height: 18px; }
   .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
@@ -163,9 +251,14 @@
 <body>
 <div class="wrap">
 
-  <h1>汉字 Writing Quiz</h1>
-  <p class="sub">Type the words you want to practise, then write each character stroke by stroke —
-    tracing an outline (描红) or from memory after hearing it (听写).</p>
+  <div class="top">
+    <div>
+      <h1>汉字 Writing Quiz</h1>
+      <p class="sub">Type the words you want to practise, then write each character stroke by stroke —
+        tracing an outline (描红) or from memory after hearing it (听写).</p>
+    </div>
+    <button id="theme" title="Switch between auto, light and dark">🌗 Auto</button>
+  </div>
 
   <!-- ============ SETUP ============ -->
   <section id="setup" class="card">
@@ -287,21 +380,49 @@
   const $ = id => document.getElementById(id);
   const CJK = /[㐀-䶿一-鿿豈-﫿]/;
 
+  /* Safari (and Chrome) can throw on localStorage for file:// and other
+     opaque origins, so never let persistence break the app. */
+  const store = {
+    get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+
+  /* ---------- theme: auto → light → dark ---------- */
+  const theme = (() => {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const ORDER = ['auto', 'light', 'dark'];
+    const FACE = { auto: '🌗 Auto', light: '☀️ Light', dark: '🌙 Dark' };
+    let pref = ORDER.includes(store.get('hq-theme')) ? store.get('hq-theme') : 'auto';
+
+    const apply = () => {
+      const r = document.documentElement;
+      if (pref === 'auto') r.removeAttribute('data-theme');
+      else r.setAttribute('data-theme', pref);
+      const btn = $('theme');
+      if (btn) btn.textContent = FACE[pref];
+    };
+
+    return {
+      apply,
+      isDark: () => pref === 'dark' || (pref === 'auto' && mq.matches),
+      cycle() {
+        pref = ORDER[(ORDER.indexOf(pref) + 1) % ORDER.length];
+        store.set('hq-theme', pref);
+        apply();
+      },
+      // only meaningful while following the system
+      onSystemChange: cb => mq.addEventListener('change', () => { if (pref === 'auto') cb(); }),
+    };
+  })();
+
   /* ---------- theme-aware colours for the SVG renderer ---------- */
-  const dark = matchMedia('(prefers-color-scheme: dark)');
-  const palette = () => dark.matches
-    ? { stroke: '#e8e6e3', outline: '#4a505a', drawing: '#e0705a', highlight: '#7d94d8' }
-    : { stroke: '#1f2328', outline: '#cfcbc2', drawing: '#b8442f', highlight: '#8fa6e8' };
+  const palette = () => theme.isDark()
+    ? { stroke: '#e8e4dc', outline: '#4a505a', drawing: '#e0705a', highlight: '#7d94d8' }
+    : { stroke: '#2f2822', outline: '#c3b189', drawing: '#b8442f', highlight: '#c8956a' };
 
   /* ---------- sound effects (synthesised, no audio files) ---------- */
   const sfx = (() => {
     let ctx = null;
-    // Safari (and Chrome) can throw on localStorage for file:// and other
-    // opaque origins, so never let persistence break the app.
-    const store = {
-      get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
-      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
-    };
     let muted = store.get('hq-muted') === '1';
 
     // Browsers only allow audio after a user gesture, so build lazily.
@@ -729,15 +850,21 @@
   $('mute').addEventListener('click', () => { sfx.toggle(); paintMute(); });
   paintMute();
 
+  /* The strokes are SVG coloured from JS, so a theme change has to rebuild
+     them — CSS variables alone cannot recolour what hanzi-writer painted. */
+  const recolour = () => {
+    if (!$('quiz').classList.contains('hidden') && !S.busy) renderWord();
+  };
+  $('theme').addEventListener('click', () => { theme.cycle(); recolour(); });
+  theme.onSystemChange(recolour);
+  theme.apply();                       // paints the button face on load
+
   /* Re-lay out on resize / rotate. Only the in-progress character is reset. */
   let resizeTimer;
   addEventListener('resize', () => {
     if ($('quiz').classList.contains('hidden') || S.busy) return;
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(renderWord, 250);
-  });
-  dark.addEventListener('change', () => {
-    if (!$('quiz').classList.contains('hidden') && !S.busy) renderWord();
   });
 
   /* ================= results ================= */

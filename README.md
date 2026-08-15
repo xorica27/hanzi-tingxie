@@ -26,7 +26,18 @@ replays the audio.
   never dead-ends you
 - Synthesised sound effects (Web Audio — no audio files): per-stroke blip, mistake
   buzz, per-character chime, per-word arpeggio, closing fanfare. Mutable.
-- Dark mode, responsive, touch-friendly
+- Responsive and touch-friendly
+
+## Theme
+
+The button in the top right cycles **auto → light → dark**, remembered between visits.
+Auto follows your OS setting.
+
+Light mode is styled as 宣纸 rice paper: a warm pulp ground with fibre tooth, an uneven
+wash, sumi-ink text and a 朱砂 vermilion accent for the active writing square. The
+texture is generated entirely in CSS from an inline SVG `feTurbulence` filter composited
+with `background-blend-mode` — no image files and no extra network requests. Dark mode
+drops the paper entirely for a plain ink-stone palette.
 
 ## Running it
 
