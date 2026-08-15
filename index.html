@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>汉字 Writing Quiz</title>
+<script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.7.3/dist/hanzi-writer.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --line: #e2e0da;
+    --accent: #b8442f;
+    --accent-soft: #fbeae6;
+    --ok: #2f7d5d;
+    --ok-soft: #e6f4ed;
+    --grid: #ddd8ce;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --panel: #1e2126;
+      --ink: #e8e6e3;
+      --muted: #9aa1ab;
+      --line: #32363d;
+      --accent: #e0705a;
+      --accent-soft: #34211d;
+      --ok: #62c398;
+      --ok-soft: #1c2f27;
+      --grid: #363b43;
+      --shadow: 0 1px 3px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .wrap { width: 100%; max-width: 760px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .01em; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .hint { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+  textarea {
+    width: 100%;
+    min-height: 96px;
+    resize: vertical;
+    padding: 12px;
+    font: 20px/1.7 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+
+  .opts {
+    display: flex; flex-wrap: wrap; gap: 18px 26px;
+    margin: 18px 0 20px; padding-top: 18px; border-top: 1px solid var(--line);
+  }
+  .opt { font-size: 13px; }
+  .opt label { margin-bottom: 4px; }
+  .opt select, .opt input[type=range] {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+  }
+  .opt input[type=range] { padding: 0; width: 130px; vertical-align: middle; }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    border-radius: 8px; padding: 9px 16px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+    transition: background .12s, border-color .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  .msg { margin-top: 12px; font-size: 13px; color: var(--accent); min-height: 18px; }
+
+  /* ---------- quiz ---------- */
+  .bar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .bar .pos { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-bottom: 24px; }
+  .track > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s ease; }
+
+  #stage { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+
+  .cell {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    touch-action: none;              /* stop scroll-while-drawing on touch */
+    transition: border-color .2s, opacity .2s, background .2s;
+  }
+  .cell::before {                     /* 米字格 practice guide */
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 8px;
+    background:
+      linear-gradient(to right, transparent calc(50% - .5px), var(--grid) calc(50% - .5px),
+                      var(--grid) calc(50% + .5px), transparent calc(50% + .5px)),
+      linear-gradient(to bottom, transparent calc(50% - .5px), var(--grid) calc(50% - .5px),
+                      var(--grid) calc(50% + .5px), transparent calc(50% + .5px)),
+      linear-gradient(to bottom right, transparent calc(50% - .5px), var(--grid) calc(50% - .5px),
+                      var(--grid) calc(50% + .5px), transparent calc(50% + .5px)),
+      linear-gradient(to bottom left, transparent calc(50% - .5px), var(--grid) calc(50% - .5px),
+                      var(--grid) calc(50% + .5px), transparent calc(50% + .5px));
+    opacity: .65;
+  }
+  .cell > div { position: relative; z-index: 1; }
+  .cell.pending { opacity: .3; pointer-events: none; }
+  .cell.active  { border-color: var(--accent); background: var(--accent-soft); }
+  .cell.done    { border-color: var(--ok); background: var(--ok-soft); pointer-events: none; }
+
+  .pinyin { text-align: center; font-size: 13px; color: var(--muted); margin: -10px 0 18px; min-height: 18px; }
+  .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .tally { text-align: center; font-size: 13px; color: var(--muted); margin-top: 18px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- results ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 4px 0 20px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  td.word { font-size: 20px; font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", serif; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .clean { color: var(--ok); font-weight: 600; }
+
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat b { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>汉字 Writing Quiz</h1>
+  <p class="sub">Type the words you want to practise, then write each character stroke by stroke —
+    tracing an outline (描红) or from memory after hearing it (听写).</p>
+
+  <!-- ============ SETUP ============ -->
+  <section id="setup" class="card">
+    <label for="input">Words to practise
+      <span class="hint">— separate with commas, spaces, or new lines</span>
+    </label>
+    <textarea id="input" spellcheck="false"
+      placeholder="你好，重要，吃饭，知道，晚安">你好，重要，吃饭，知道，晚安</textarea>
+
+    <div class="opts">
+      <div class="opt">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="trace">描红 — trace the outline</option>
+          <option value="dictation">听写 — hear it, write it</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="leniency">Strictness</label>
+        <input type="range" id="leniency" min="0.5" max="2" step="0.1" value="1">
+        <span id="leniencyLabel" class="hint">Normal</span>
+      </div>
+      <div class="opt">
+        <label for="hintAfter">Hint after</label>
+        <select id="hintAfter">
+          <option value="1">1 miss</option>
+          <option value="2">2 misses</option>
+          <option value="3" selected>3 misses</option>
+          <option value="5">5 misses</option>
+          <option value="false">never</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="giveAfter">Auto-advance after</label>
+        <select id="giveAfter">
+          <option value="3">3 misses</option>
+          <option value="5" selected>5 misses</option>
+          <option value="8">8 misses</option>
+          <option value="0">never</option>
+        </select>
+      </div>
+      <div class="opt" style="align-self:flex-end">
+        <div class="check">
+          <input type="checkbox" id="outline" checked>
+          <label for="outline" style="margin:0;font-weight:400">Show outline</label>
+        </div>
+      </div>
+      <div class="opt" style="align-self:flex-end">
+        <div class="check">
+          <input type="checkbox" id="shuffle">
+          <label for="shuffle" style="margin:0;font-weight:400">Shuffle words</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- dictation-only settings -->
+    <div class="opts hidden" id="speechOpts" style="margin-top:-2px">
+      <div class="opt">
+        <label for="voice">Voice</label>
+        <select id="voice"></select>
+      </div>
+      <div class="opt">
+        <label for="rate">Speaking speed</label>
+        <input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="0.85">
+        <span id="rateLabel" class="hint">0.85×</span>
+      </div>
+      <div class="opt" style="align-self:flex-end">
+        <button type="button" id="testVoice">Test voice</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="start">Start quiz</button>
+      <span class="hint" id="count"></span>
+    </div>
+    <div class="msg" id="msg"></div>
+  </section>
+
+  <!-- ============ QUIZ ============ -->
+  <section id="quiz" class="card hidden">
+    <div class="bar">
+      <strong id="wordLabel"></strong>
+      <span class="pos" id="pos"></span>
+    </div>
+    <div class="track"><i id="fill"></i></div>
+
+    <div id="stage"></div>
+    <div class="pinyin" id="status"></div>
+
+    <div class="controls">
+      <button id="replay" class="hidden">🔈 再听一次</button>
+      <button id="demo">Show me</button>
+      <button id="again">Restart character</button>
+      <button id="skip">Skip character</button>
+      <button id="quit">Quit</button>
+      <button id="mute" title="Toggle sound">🔊</button>
+    </div>
+    <div class="tally" id="tally"></div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="results" class="card hidden">
+    <h1 style="margin-bottom:16px">Done</h1>
+    <div class="stats" id="stats"></div>
+    <table id="breakdown"></table>
+    <div class="row">
+      <button class="primary" id="retry">Practise again</button>
+      <button id="edit">Change words</button>
+      <button id="retryMissed">Redo the ones I missed</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const CJK = /[㐀-䶿一-鿿豈-﫿]/;
+
+  /* ---------- theme-aware colours for the SVG renderer ---------- */
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  const palette = () => dark.matches
+    ? { stroke: '#e8e6e3', outline: '#4a505a', drawing: '#e0705a', highlight: '#7d94d8' }
+    : { stroke: '#1f2328', outline: '#cfcbc2', drawing: '#b8442f', highlight: '#8fa6e8' };
+
+  /* ---------- sound effects (synthesised, no audio files) ---------- */
+  const sfx = (() => {
+    let ctx = null;
+    // Safari (and Chrome) can throw on localStorage for file:// and other
+    // opaque origins, so never let persistence break the app.
+    const store = {
+      get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+    };
+    let muted = store.get('hq-muted') === '1';
+
+    // Browsers only allow audio after a user gesture, so build lazily.
+    const ac = () => {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!ctx) ctx = new AC();
+      if (ctx.state === 'suspended') ctx.resume();
+      return ctx;
+    };
+
+    /** One enveloped oscillator. `to` sweeps the pitch; `at` delays in seconds. */
+    function tone(freq, { dur = 0.16, at = 0, type = 'sine', vol = 0.18, to = null } = {}) {
+      if (muted) return;
+      try {
+        const c = ac();
+        if (!c) return;
+        const t0 = c.currentTime + at;
+        const osc = c.createOscillator(), g = c.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t0);
+        if (to) osc.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);      // soft attack, no click
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.connect(g).connect(c.destination);
+        osc.start(t0);
+        osc.stop(t0 + dur + 0.02);
+      } catch (e) { /* audio is a nicety — never let it break the quiz */ }
+    }
+
+    const chord = (freqs, opts = {}) =>
+      freqs.forEach((f, i) => tone(f, { ...opts, at: (opts.at || 0) + i * (opts.spread ?? 0.09) }));
+
+    return {
+      get muted() { return muted; },
+      /** Create/resume the AudioContext inside a user gesture — mobile
+       *  browsers start it suspended and ignore later un-gestured resumes. */
+      prime() { try { ac(); } catch (e) {} },
+      toggle() {
+        muted = !muted;
+        store.set('hq-muted', muted ? '1' : '0');
+        if (!muted) tone(880, { dur: 0.1, vol: 0.14 });   // confirm un-mute
+        return muted;
+      },
+      // fires on every stroke, so keep it quiet and short
+      stroke: () => tone(1180, { dur: 0.075, vol: 0.07, type: 'triangle' }),
+      miss:   () => tone(190,  { dur: 0.2,  vol: 0.16, type: 'sawtooth', to: 120 }),
+      char:   () => chord([784, 1046.5], { dur: 0.16, vol: 0.14, spread: 0.075 }),
+      word:   () => chord([523.25, 659.25, 783.99, 1046.5], { dur: 0.3, vol: 0.15, spread: 0.085 }),
+      skip:   () => tone(320, { dur: 0.12, vol: 0.1, type: 'triangle', to: 260 }),
+      finish: () => {
+        chord([523.25, 659.25, 783.99], { dur: 0.5, vol: 0.14, spread: 0.11 });
+        chord([1046.5, 1318.5], { dur: 0.7, vol: 0.13, at: 0.33, spread: 0.1 });
+      },
+    };
+  })();
+
+  /* ---------- Mandarin speech for 听写 mode ---------- */
+  const speech = (() => {
+    const ok = 'speechSynthesis' in window;
+    let voices = [];
+
+    const refresh = () => {
+      if (!ok) return;
+      voices = speechSynthesis.getVoices().filter(v => /^(zh|cmn)/i.test(v.lang));
+      const sel = $('voice');
+      if (!sel || sel.dataset.filled === String(voices.length)) return;
+      sel.dataset.filled = String(voices.length);
+      sel.innerHTML = voices.length
+        ? voices.map(v => `<option value="${v.name}">${v.name} (${v.lang})</option>`).join('')
+        : '<option value="">No Chinese voice installed</option>';
+      // Default to a natural mainland voice. macOS ships a set of novelty
+      // Chinese voices (Eddy, Flo, Grandma…) that sort first but read poorly.
+      const NOVELTY = /^(Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley|Bubbles|Jester|Superstar|Trinoids|Wobble)/i;
+      const cn = voices.filter(v => /^zh-CN/i.test(v.lang));
+      const best = cn.find(v => /Tingting|Ting-Ting|Li-Mu|Yu-shu/i.test(v.name))
+                || cn.find(v => !NOVELTY.test(v.name))
+                || cn[0] || voices[0];
+      if (best) sel.value = best.name;
+    };
+
+    if (ok) {
+      refresh();
+      speechSynthesis.addEventListener('voiceschanged', refresh);
+    }
+
+    let primed = false;
+
+    return {
+      available: () => ok,
+      voiceCount: () => voices.length,
+      refresh,
+      /** iOS Safari only unlocks speech if the FIRST utterance is spoken
+       *  synchronously inside a user gesture. Call this from a click handler
+       *  before any await, or every later speak() is silently dropped. */
+      prime() {
+        if (!ok || primed) return;
+        try {
+          const u = new SpeechSynthesisUtterance('');
+          u.volume = 0;
+          speechSynthesis.speak(u);
+          primed = true;
+        } catch (e) { /* not fatal */ }
+      },
+      say(text, rate) {
+        if (!ok || !text) return;
+        try {
+          speechSynthesis.cancel();                 // drop anything still queued
+          const u = new SpeechSynthesisUtterance(text);
+          const chosen = voices.find(v => v.name === ($('voice') || {}).value);
+          if (chosen) { u.voice = chosen; u.lang = chosen.lang; } else { u.lang = 'zh-CN'; }
+          u.rate = rate || 0.85;
+          speechSynthesis.speak(u);
+        } catch (e) { /* speech is optional */ }
+      },
+      stop() { if (ok) { try { speechSynthesis.cancel(); } catch (e) {} } },
+    };
+  })();
+
+  /* ---------- state ---------- */
+  const S = {
+    words: [],          // [['你','好'], ...]
+    wi: 0,              // word index
+    ci: 0,              // character index within word
+    writers: [],        // HanziWriter instances for the current word
+    misses: [],         // misses[wi][ci]
+    skipped: [],        // skipped[wi][ci]
+    wordDone: [],       // wordDone[wi] — word fully finished
+    doneChars: 0,       // characters advanced past (incl. skipped)
+    settings: {},
+    startedAt: 0,
+    busy: false,        // true during the pause between characters
+  };
+
+  /* ================= setup screen ================= */
+
+  const parseWords = text =>
+    text.split(/[^㐀-䶿一-鿿豈-﫿]+/)
+        .filter(Boolean)
+        .map(w => [...w]);
+
+  function refreshCount() {
+    const w = parseWords($('input').value);
+    const chars = w.reduce((n, x) => n + x.length, 0);
+    $('count').textContent = w.length
+      ? `${w.length} word${w.length > 1 ? 's' : ''}, ${chars} character${chars > 1 ? 's' : ''}`
+      : '';
+  }
+
+  const LENIENCY = [[0.7,'Strict'], [0.9,'Firm'], [1.2,'Normal'], [1.6,'Relaxed'], [99,'Very forgiving']];
+  function refreshLeniency() {
+    const v = parseFloat($('leniency').value);
+    $('leniencyLabel').textContent = LENIENCY.find(l => v <= l[0])[1];
+  }
+
+  function refreshMode() {
+    const dict = $('mode').value === 'dictation';
+    $('speechOpts').classList.toggle('hidden', !dict);
+    $('outline').disabled = dict;                 // nothing to trace in 听写
+    if (dict) {
+      speech.refresh();
+      $('msg').style.color = 'var(--accent)';
+      $('msg').textContent = speech.available() && speech.voiceCount()
+        ? '' : 'No Mandarin voice found — install one in your OS speech settings.';
+    } else {
+      $('msg').textContent = '';
+    }
+  }
+
+  $('input').addEventListener('input', refreshCount);
+  $('leniency').addEventListener('input', refreshLeniency);
+  $('mode').addEventListener('change', refreshMode);
+  $('rate').addEventListener('input', () => {
+    $('rateLabel').textContent = parseFloat($('rate').value).toFixed(2) + '×';
+  });
+  $('testVoice').addEventListener('click', () =>
+    speech.say('你好，我们开始听写', parseFloat($('rate').value)));
+  refreshCount(); refreshLeniency(); refreshMode();
+
+  $('start').addEventListener('click', async () => {
+    // Must happen synchronously, before any await, or iOS never unlocks audio.
+    sfx.prime();
+    if ($('mode').value === 'dictation') speech.prime();
+
+    const btn = $('start');
+    let words = parseWords($('input').value);
+
+    if (!words.length) {
+      $('msg').textContent = 'Enter at least one Chinese word.';
+      return;
+    }
+    if ($('shuffle').checked) {
+      for (let i = words.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [words[i], words[j]] = [words[j], words[i]];
+      }
+    }
+
+    // Pre-load every character so we fail loudly here rather than mid-quiz,
+    // and so the CDN cache is warm before the user starts writing.
+    btn.disabled = true;
+    $('msg').style.color = 'var(--muted)';
+    $('msg').textContent = 'Loading character data…';
+
+    const unique = [...new Set(words.flat())];
+    const bad = [];
+    await Promise.all(unique.map(c =>
+      HanziWriter.loadCharacterData(c).catch(() => bad.push(c))
+    ));
+
+    btn.disabled = false;
+    $('msg').style.color = 'var(--accent)';
+
+    if (bad.length) {
+      words = words.map(w => w.filter(c => !bad.includes(c))).filter(w => w.length);
+      $('msg').textContent = `No stroke data for ${bad.join(' ')} — skipped.`;
+      if (!words.length) return;
+    } else {
+      $('msg').textContent = '';
+    }
+
+    const dictation = $('mode').value === 'dictation';
+    S.settings = {
+      dictation,
+      leniency: parseFloat($('leniency').value),
+      hintAfter: $('hintAfter').value === 'false' ? false : parseInt($('hintAfter').value, 10),
+      giveAfter: parseInt($('giveAfter').value, 10) || undefined,
+      outline: dictation ? false : $('outline').checked,   // 听写 shows nothing to copy
+      rate: parseFloat($('rate').value),
+    };
+    begin(words);
+  });
+
+  /* ================= quiz ================= */
+
+  function begin(words) {
+    S.words = words;
+    S.wi = 0; S.ci = 0;
+    S.misses   = words.map(w => w.map(() => 0));
+    S.skipped  = words.map(w => w.map(() => false));
+    S.wordDone = words.map(() => false);
+    S.doneChars = 0;
+    S.startedAt = Date.now();
+
+    $('setup').classList.add('hidden');
+    $('results').classList.add('hidden');
+    $('quiz').classList.remove('hidden');
+    $('replay').classList.toggle('hidden', !S.settings.dictation);
+    $('demo').textContent = S.settings.dictation ? 'Reveal' : 'Show me';
+    renderWord(true);
+  }
+
+  /** Size each cell so the whole word fits the panel on any screen. */
+  function cellSize(n) {
+    const avail = $('stage').clientWidth || 700;
+    const gaps = 14 * (n - 1);
+    return Math.max(88, Math.min(190, Math.floor((avail - gaps - 2) / n)));
+  }
+
+  /** (Re)build every writer for the current word and resume at S.ci.
+   *  `announce` speaks the word — true on a real word change, false on
+   *  a cosmetic rebuild (resize / theme flip) so it isn't repeated. */
+  function renderWord(announce = false) {
+    const word = S.words[S.wi];
+    const stage = $('stage');
+
+    S.writers.forEach(w => { try { w.cancelQuiz(); } catch (e) {} });
+    S.writers = [];
+    stage.innerHTML = '';
+
+    const size = cellSize(word.length);
+    const c = palette();
+
+    word.forEach((char, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.style.width = cell.style.height = size + 'px';
+      const target = document.createElement('div');
+      cell.appendChild(target);
+      stage.appendChild(cell);
+
+      const done = i < S.ci;
+      S.writers.push(HanziWriter.create(target, char, {
+        width: size, height: size,
+        padding: Math.round(size * 0.07),
+        showCharacter: done,
+        showOutline: done ? false : S.settings.outline,
+        strokeColor: done ? c.stroke : c.stroke,
+        outlineColor: c.outline,
+        drawingColor: c.drawing,
+        highlightColor: c.highlight,
+        drawingWidth: Math.max(4, Math.round(size / 26)),
+        strokeAnimationSpeed: 1.2,
+        delayBetweenStrokes: 220,
+      }));
+
+      cell.className = 'cell ' + (done ? 'done' : i === S.ci ? 'active' : 'pending');
+    });
+
+    updateChrome();
+    if (announce && S.settings.dictation) speech.say(word.join(''), S.settings.rate);
+    startCharacter();
+  }
+
+  function startCharacter() {
+    const writer = S.writers[S.ci];
+    if (!writer) return;
+    S.busy = false;
+
+    writer.quiz({
+      leniency: S.settings.leniency,
+      showHintAfterMisses: S.settings.hintAfter,
+      markStrokeCorrectAfterMisses: S.settings.giveAfter,
+      onMistake: () => {
+        S.misses[S.wi][S.ci]++;
+        sfx.miss();
+        $('status').textContent = 'Not quite — try that stroke again.';
+        updateChrome();
+      },
+      onCorrectStroke: ({ strokesRemaining }) => {
+        if (strokesRemaining) sfx.stroke();   // the completion sound covers the last one
+        $('status').textContent = strokesRemaining
+          ? `${strokesRemaining} stroke${strokesRemaining > 1 ? 's' : ''} to go`
+          : '';
+      },
+      onComplete: () => advance(),
+    });
+
+    $('status').textContent = S.settings.dictation
+      ? `Write character ${S.ci + 1} of ${S.words[S.wi].length}`
+      : 'Trace the character';
+  }
+
+  function advance() {
+    if (S.busy) return;
+    S.busy = true;
+
+    const cells = $('stage').children;
+    if (cells[S.ci]) cells[S.ci].className = 'cell done';
+    S.writers[S.ci].showCharacter();
+    S.doneChars++;
+
+    const lastInWord = S.ci >= S.words[S.wi].length - 1;
+    const lastWord   = S.wi >= S.words.length - 1;
+    if (lastInWord) S.wordDone[S.wi] = true;
+
+    if (S.skipped[S.wi][S.ci])        sfx.skip();
+    else if (lastInWord && !lastWord) sfx.word();
+    else if (!lastInWord)             sfx.char();
+    // final character of the final word stays silent — the fanfare follows
+
+    $('status').textContent = lastInWord ? '✓ ' + S.words[S.wi].join('') : '✓';
+
+    setTimeout(() => {
+      if (!lastInWord) {
+        S.ci++;
+        if (cells[S.ci]) cells[S.ci].className = 'cell active';
+        updateChrome();
+        startCharacter();
+      } else if (!lastWord) {
+        S.wi++; S.ci = 0;
+        renderWord(true);
+      } else {
+        finish();
+      }
+    }, lastInWord ? 850 : 450);
+  }
+
+  function updateChrome() {
+    const word = S.words[S.wi];
+    // In 听写 the word must stay hidden — reveal one character at a time as
+    // it is written, so the learner still gets feedback.
+    $('wordLabel').textContent = S.settings.dictation
+      ? word.map((c, i) => (i < S.ci ? c : '＿')).join('')
+      : word.join('');
+    $('pos').textContent =
+      `Word ${S.wi + 1} / ${S.words.length}  ·  Character ${S.ci + 1} / ${word.length}`;
+
+    const total = S.words.reduce((n, w) => n + w.length, 0);
+    const done  = S.words.slice(0, S.wi).reduce((n, w) => n + w.length, 0) + S.ci;
+    $('fill').style.width = (done / total * 100) + '%';
+
+    const m = S.misses.flat().reduce((a, b) => a + b, 0);
+    $('tally').textContent = m ? `${m} mistake${m > 1 ? 's' : ''} so far` : 'No mistakes yet';
+  }
+
+  /* ---------- quiz controls ---------- */
+
+  $('demo').addEventListener('click', () => {
+    const w = S.writers[S.ci];
+    if (!w || S.busy) return;
+    w.cancelQuiz();
+    $('status').textContent = 'Watch the stroke order…';
+    w.animateCharacter({
+      onComplete: () => {
+        w.hideCharacter();
+        if (S.settings.outline) w.showOutline();
+        startCharacter();
+      }
+    });
+  });
+
+  $('replay').addEventListener('click', () =>
+    speech.say(S.words[S.wi].join(''), S.settings.rate));
+
+  $('again').addEventListener('click', () => {
+    if (S.busy) return;
+    const w = S.writers[S.ci];
+    if (!w) return;
+    w.cancelQuiz();
+    startCharacter();
+  });
+
+  $('skip').addEventListener('click', () => {
+    if (S.busy) return;
+    S.skipped[S.wi][S.ci] = true;
+    S.writers[S.ci].cancelQuiz();
+    advance();
+  });
+
+  $('quit').addEventListener('click', () => finish(true));
+
+  const paintMute = () => { $('mute').textContent = sfx.muted ? '🔇' : '🔊'; };
+  $('mute').addEventListener('click', () => { sfx.toggle(); paintMute(); });
+  paintMute();
+
+  /* Re-lay out on resize / rotate. Only the in-progress character is reset. */
+  let resizeTimer;
+  addEventListener('resize', () => {
+    if ($('quiz').classList.contains('hidden') || S.busy) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderWord, 250);
+  });
+  dark.addEventListener('change', () => {
+    if (!$('quiz').classList.contains('hidden') && !S.busy) renderWord();
+  });
+
+  /* ================= results ================= */
+
+  function finish(quit = false) {
+    S.writers.forEach(w => { try { w.cancelQuiz(); } catch (e) {} });
+    S.busy = true;
+    speech.stop();
+    if (!quit) sfx.finish();
+
+    const secs = Math.round((Date.now() - S.startedAt) / 1000);
+    const skips = S.skipped.flat().filter(Boolean).length;
+    const written = S.doneChars - skips;
+    const totalMisses = S.misses.flat().reduce((a, b) => a + b, 0);
+    const perfect = S.words.filter((w, i) =>
+      S.wordDone[i] && S.misses[i].every(m => m === 0) && S.skipped[i].every(s => !s)).length;
+
+    $('stats').innerHTML = `
+      <div class="stat"><b>${written}</b><span>characters written</span></div>
+      <div class="stat"><b>${totalMisses}</b><span>mistakes</span></div>
+      <div class="stat"><b>${perfect}</b><span>flawless words</span></div>
+      <div class="stat"><b>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</b><span>time</span></div>`;
+
+    const rows = S.words.map((w, i) => {
+      const reached = S.wordDone[i] || (i === S.wi && S.ci > 0);
+      if (!reached) return '';
+      const m = S.misses[i].reduce((a, b) => a + b, 0);
+      const sk = S.skipped[i].filter(Boolean).length;
+      const detail = w.map((ch, j) =>
+        S.skipped[i][j] ? `${ch} skipped`
+        : S.misses[i][j] ? `${ch} ×${S.misses[i][j]}`
+        : null).filter(Boolean).join(', ');
+      return `<tr>
+        <td class="word">${w.join('')}</td>
+        <td>${detail || '<span class="clean">clean</span>'}</td>
+        <td class="num">${m + sk ? m : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    $('breakdown').innerHTML = rows
+      ? `<tr><th>Word</th><th>Trouble spots</th><th class="num">Misses</th></tr>${rows}`
+      : '';
+
+    // Words worth a second pass: anything missed or skipped.
+    S.missedWords = S.words.filter((w, i) =>
+      (S.wordDone[i] || (i === S.wi && S.ci > 0)) &&
+      (S.misses[i].some(m => m > 0) || S.skipped[i].some(Boolean)));
+    $('retryMissed').classList.toggle('hidden', !S.missedWords.length);
+
+    $('quiz').classList.add('hidden');
+    $('results').classList.remove('hidden');
+  }
+
+  $('retry').addEventListener('click', () => begin(S.words));
+  $('retryMissed').addEventListener('click', () => begin(S.missedWords));
+  $('edit').addEventListener('click', () => {
+    $('results').classList.add('hidden');
+    $('setup').classList.remove('hidden');
+  });
+
+})();
+</script>
+</body>
+</html>
