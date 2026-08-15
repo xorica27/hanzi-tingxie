@@ -20,6 +20,8 @@ replays the audio.
 
 - Enter any number of words — commas (`，` or `,`), spaces, and newlines all work
 - Automatic progression: character → character → word → results
+- Pinyin shown per character and per word, and again on the results screen —
+  toggleable, and context-aware (重要 reads *zhòng yào*, not *chóng yào*)
 - Per-character mistake tracking, with a "redo the ones I missed" pass
 - 米字格 guide lines behind every box
 - Adjustable strictness, hint-after-N-misses, and auto-advance so a hard stroke
@@ -72,6 +74,8 @@ silently. Guaranteed audio for every visitor would require a server-side TTS API
   stroke-order grading
 - [Make Me a Hanzi](https://github.com/skishore/makemeahanzi) — stroke-order vector and
   median data for ~9,000 characters
+- [pinyin-pro](https://github.com/zh-lx/pinyin-pro) (MIT) — word-level pinyin with
+  多音字 disambiguation
 
 ## Deploying
 

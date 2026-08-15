@@ -15,6 +15,7 @@
   })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.7.3/dist/hanzi-writer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.29.1/dist/index.js"></script>
 <style>
   /* Light = 宣纸 rice paper with sumi ink and a 朱砂 seal-red accent.
      Tokens live on bare :root so the palette is always fully defined;
@@ -196,7 +197,18 @@
   .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-bottom: 24px; }
   .track > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s ease; }
 
-  #stage { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  #stage { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
+           margin-bottom: 20px; align-items: flex-start; }
+  .slot { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  /* pinyin caption tracks its cell's state via the adjacent-sibling selector,
+     so cell state stays the single source of truth */
+  .py { font-size: 13px; color: var(--muted); letter-spacing: .02em; min-height: 17px;
+        transition: color .2s, opacity .2s; }
+  .cell.pending + .py { opacity: .35; }
+  .cell.active  + .py { color: var(--accent); font-weight: 600; }
+  .cell.done    + .py { color: var(--ok); }
+  .wordpy { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .rowpy { display: block; font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 1px; }
 
   .cell {
     position: relative;
@@ -229,7 +241,7 @@
   .cell.active  { border-color: var(--accent); background-color: var(--accent-soft); }
   .cell.done    { border-color: var(--ok); background-color: var(--ok-soft); pointer-events: none; }
 
-  .pinyin { text-align: center; font-size: 13px; color: var(--muted); margin: -10px 0 18px; min-height: 18px; }
+  .statusline { text-align: center; font-size: 13px; color: var(--muted); margin: -10px 0 18px; min-height: 18px; }
   .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
   .tally { text-align: center; font-size: 13px; color: var(--muted); margin-top: 18px; font-variant-numeric: tabular-nums; }
 
@@ -312,6 +324,12 @@
           <label for="shuffle" style="margin:0;font-weight:400">Shuffle words</label>
         </div>
       </div>
+      <div class="opt" style="align-self:flex-end">
+        <div class="check">
+          <input type="checkbox" id="pinyin" checked>
+          <label for="pinyin" style="margin:0;font-weight:400">Show pinyin</label>
+        </div>
+      </div>
     </div>
 
     <!-- dictation-only settings -->
@@ -340,13 +358,13 @@
   <!-- ============ QUIZ ============ -->
   <section id="quiz" class="card hidden">
     <div class="bar">
-      <strong id="wordLabel"></strong>
+      <span><strong id="wordLabel"></strong><span class="wordpy" id="wordPy"></span></span>
       <span class="pos" id="pos"></span>
     </div>
     <div class="track"><i id="fill"></i></div>
 
     <div id="stage"></div>
-    <div class="pinyin" id="status"></div>
+    <div class="statusline" id="status"></div>
 
     <div class="controls">
       <button id="replay" class="hidden">🔈 再听一次</button>
@@ -386,6 +404,36 @@
     get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
   };
+
+  /* ---------- pinyin ----------
+     Word-level lookup, not per-character: pinyin-pro disambiguates 多音字
+     from context, so 重要 reads zhòng-yào rather than chóng-yào. Degrades to
+     empty strings if the CDN script is unavailable — never throws. */
+  const py = (() => {
+    const cache = new Map();
+    const lib = () => window.pinyinPro && window.pinyinPro.pinyin;
+    const get = (key, fn) => {
+      if (!cache.has(key)) { try { cache.set(key, fn()); } catch (e) { cache.set(key, null); } }
+      return cache.get(key);
+    };
+    const str = w => (Array.isArray(w) ? w.join('') : w);
+    return {
+      available: () => !!lib(),
+      /** "xué xí" */
+      word(w) {
+        const k = str(w);
+        return (lib() ? get('w' + k, () => lib()(k, { toneType: 'symbol' })) : '') || '';
+      },
+      /** ['xué','xí'] — always exactly one entry per character, so the
+       *  captions can never drift out of alignment with the cells. */
+      chars(w) {
+        const arr = Array.isArray(w) ? w : [...w];
+        const k = arr.join('');
+        const r = lib() ? get('c' + k, () => lib()(k, { type: 'array', toneType: 'symbol' })) : null;
+        return (Array.isArray(r) && r.length === arr.length) ? r : arr.map(() => '');
+      },
+    };
+  })();
 
   /* ---------- theme: auto → light → dark ---------- */
   const theme = (() => {
@@ -653,6 +701,7 @@
       giveAfter: parseInt($('giveAfter').value, 10) || undefined,
       outline: dictation ? false : $('outline').checked,   // 听写 shows nothing to copy
       rate: parseFloat($('rate').value),
+      showPinyin: $('pinyin').checked,
     };
     begin(words);
   });
@@ -696,14 +745,22 @@
 
     const size = cellSize(word.length);
     const c = palette();
+    const readings = S.settings.showPinyin ? py.chars(word) : word.map(() => '');
 
     word.forEach((char, i) => {
+      const slot = document.createElement('div');
+      slot.className = 'slot';
       const cell = document.createElement('div');
       cell.className = 'cell';
       cell.style.width = cell.style.height = size + 'px';
       const target = document.createElement('div');
       cell.appendChild(target);
-      stage.appendChild(cell);
+      slot.appendChild(cell);
+      const cap = document.createElement('div');
+      cap.className = 'py';
+      cap.textContent = readings[i] || '';
+      slot.appendChild(cap);
+      stage.appendChild(slot);
 
       const done = i < S.ci;
       S.writers.push(HanziWriter.create(target, char, {
@@ -761,7 +818,7 @@
     if (S.busy) return;
     S.busy = true;
 
-    const cells = $('stage').children;
+    const cells = $('stage').querySelectorAll('.cell');   // stage children are .slot wrappers
     if (cells[S.ci]) cells[S.ci].className = 'cell done';
     S.writers[S.ci].showCharacter();
     S.doneChars++;
@@ -799,6 +856,9 @@
     $('wordLabel').textContent = S.settings.dictation
       ? word.map((c, i) => (i < S.ci ? c : '＿')).join('')
       : word.join('');
+    // The reading is what the 听写 learner just heard, so it gives nothing
+    // away that the audio didn't — but it still respects the toggle.
+    $('wordPy').textContent = S.settings.showPinyin ? py.word(word) : '';
     $('pos').textContent =
       `Word ${S.wi + 1} / ${S.words.length}  ·  Character ${S.ci + 1} / ${word.length}`;
 
@@ -897,8 +957,9 @@
         S.skipped[i][j] ? `${ch} skipped`
         : S.misses[i][j] ? `${ch} ×${S.misses[i][j]}`
         : null).filter(Boolean).join(', ');
+      const reading = S.settings.showPinyin ? py.word(w) : '';
       return `<tr>
-        <td class="word">${w.join('')}</td>
+        <td class="word">${w.join('')}${reading ? `<span class="rowpy">${reading}</span>` : ''}</td>
         <td>${detail || '<span class="clean">clean</span>'}</td>
         <td class="num">${m + sk ? m : '—'}</td>
       </tr>`;
