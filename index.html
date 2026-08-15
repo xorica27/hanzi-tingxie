@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>汉字 Writing Quiz</title>
 <script>
-  /* Apply a saved theme before first paint, otherwise the page flashes the
-     system palette for a frame. Must stay inline and above the stylesheet. */
+  /* Apply the theme before first paint, otherwise a dark-OS user sees a frame
+     of dark before light wins. Light is the default, so anything other than an
+     explicit "auto" or "dark" resolves to light — including a first visit and
+     a browser that blocks storage. Must stay inline and above the stylesheet. */
   (function () {
-    try {
-      var t = localStorage.getItem('hq-theme');
-      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
-    } catch (e) { /* opaque origin — fall back to system preference */ }
+    var t = null;
+    try { t = localStorage.getItem('hq-theme'); } catch (e) { /* storage blocked */ }
+    if (t === 'auto') return;                       // follow the OS
+    document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
   })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.7.3/dist/hanzi-writer.min.js"></script>
@@ -269,6 +271,16 @@
   .stat b { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .stat span { font-size: 12px; color: var(--muted); }
 
+  .mixnote { font-size: 12px; color: var(--accent); text-align: center; margin: -16px 0 14px; }
+
+  .reviewbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px;
+    border: 1px solid var(--accent); border-radius: 8px;
+    background-color: var(--accent-soft); font-size: 13px;
+  }
+  .reviewbar b { font-variant-numeric: tabular-nums; }
+
   /* ---------- progress ---------- */
   .chart { display: flex; align-items: flex-end; gap: 3px; height: 84px;
            padding: 8px 0 0; margin-bottom: 6px; }
@@ -308,6 +320,10 @@
 
   <!-- ============ SETUP ============ -->
   <section id="setup" class="card">
+    <div id="reviewBar" class="reviewbar hidden">
+      <span>🔁 <b id="dueCount">0</b> character<span id="duePlural">s</span> due for review</span>
+      <button type="button" id="reviewNow">Review them</button>
+    </div>
     <label for="input">Words to practise
       <span class="hint">— separate with commas, spaces, or new lines</span>
     </label>
@@ -365,6 +381,12 @@
           <label for="pinyin" style="margin:0;font-weight:400">Show pinyin</label>
         </div>
       </div>
+      <div class="opt" style="align-self:flex-end">
+        <div class="check">
+          <input type="checkbox" id="autoMix" checked>
+          <label for="autoMix" style="margin:0;font-weight:400">Mix in due reviews</label>
+        </div>
+      </div>
     </div>
 
     <!-- dictation-only settings -->
@@ -399,6 +421,7 @@
       <span class="pos" id="pos"></span>
     </div>
     <div class="track"><i id="fill"></i></div>
+    <div class="mixnote" id="mixNote"></div>
 
     <div id="stage"></div>
     <div class="typerow hidden" id="typeRow">
@@ -510,6 +533,82 @@
     };
   })();
 
+  /* ---------- spaced repetition ----------
+     Leitner boxes keyed by character. A missed character drops to box 1 and
+     becomes due immediately, so the very next session picks it up; a clean
+     one is promoted and pushed further out. Each entry remembers the word it
+     was met in, so a review is a real word rather than a bare character. */
+  const srs = (() => {
+    const KEY = 'hq-srs';
+    const MIN = 60e3, DAY = 864e5;
+    const STEPS = [0, 20 * MIN, DAY, 3 * DAY, 7 * DAY, 21 * DAY];   // box 1..6
+    const TOP = STEPS.length;
+
+    const load = () => {
+      const raw = store.get(KEY);
+      if (!raw) return {};
+      try {
+        const d = JSON.parse(raw);
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return {};
+        const out = {};
+        for (const [ch, e] of Object.entries(d)) {
+          if (e && typeof e.box === 'number' && typeof e.due === 'number') {
+            out[ch] = { box: Math.min(Math.max(1, e.box | 0), TOP), due: e.due,
+                        word: typeof e.word === 'string' ? e.word : ch,
+                        lapses: e.lapses | 0 };
+          }
+        }
+        return out;
+      } catch (e) { return {}; }
+    };
+
+    const save = d => store.set(KEY, JSON.stringify(d));
+
+    return {
+      load,
+      clear: () => store.set(KEY, '{}'),
+      /** @param results [{char, word, missed}] */
+      grade(results) {
+        const d = load(), now = Date.now();
+        for (const { char, word, missed } of results) {
+          const e = d[char] || { box: 1, due: now, word, lapses: 0 };
+          e.word = word || e.word;
+          if (missed) { e.box = 1; e.lapses++; }
+          else e.box = Math.min(e.box + 1, TOP);
+          e.due = now + STEPS[e.box - 1];
+          d[char] = e;
+        }
+        save(d);
+      },
+      dueChars(now = Date.now()) {
+        return Object.entries(load())
+          .filter(([, e]) => e.due <= now)
+          .sort((a, b) => a[1].due - b[1].due || b[1].lapses - a[1].lapses);
+      },
+      counts(now = Date.now()) {
+        const all = Object.values(load());
+        return {
+          total: all.length,
+          due: all.filter(e => e.due <= now).length,
+          learning: all.filter(e => e.box <= 2).length,
+          known: all.filter(e => e.box >= 5).length,
+        };
+      },
+      /** Due characters folded back into whole words, most overdue first. */
+      reviewWords(limit) {
+        const words = [], covered = new Set();
+        for (const [ch, e] of this.dueChars()) {
+          if (covered.has(ch)) continue;
+          const w = (e.word && [...e.word].includes(ch)) ? e.word : ch;
+          [...w].forEach(c => covered.add(c));
+          if (!words.includes(w)) words.push(w);
+          if (words.length >= limit) break;
+        }
+        return words;
+      },
+    };
+  })();
+
   /* ---------- word bank for 🎲 Random 5 ----------
      Every character here was checked against the hanzi-writer data index,
      so a random draw can never produce a word with no stroke data. */
@@ -572,7 +671,9 @@
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const ORDER = ['auto', 'light', 'dark'];
     const FACE = { auto: '🌗 Auto', light: '☀️ Light', dark: '🌙 Dark' };
-    let pref = ORDER.includes(store.get('hq-theme')) ? store.get('hq-theme') : 'auto';
+    // Light is the default; 'auto' is opt-in via the toggle. Keep this in
+    // step with the pre-paint script in <head>.
+    let pref = ORDER.includes(store.get('hq-theme')) ? store.get('hq-theme') : 'light';
 
     const apply = () => {
       const r = document.documentElement;
@@ -781,6 +882,26 @@
     }
   }
 
+  /* ---------- review surfacing ---------- */
+  const MIX_MAX = 3;                    // due words folded into a normal session
+
+  function refreshDue() {
+    const n = srs.counts().due;
+    $('reviewBar').classList.toggle('hidden', n === 0);
+    $('dueCount').textContent = n;
+    $('duePlural').textContent = n === 1 ? '' : 's';
+    return n;
+  }
+
+  $('reviewNow').addEventListener('click', () => {
+    const words = srs.reviewWords(10);
+    if (!words.length) { refreshDue(); return; }
+    $('input').value = words.join('，');
+    $('input').dispatchEvent(new Event('input'));
+    $('msg').style.color = 'var(--muted)';
+    $('msg').textContent = `Loaded ${words.length} review word${words.length > 1 ? 's' : ''}.`;
+  });
+
   $('random').addEventListener('click', () => {
     $('input').value = randomWords(5).join('，');
     $('input').dispatchEvent(new Event('input'));
@@ -796,7 +917,7 @@
   });
   $('testVoice').addEventListener('click', () =>
     speech.say('你好，我们开始听写', parseFloat($('rate').value)));
-  refreshCount(); refreshLeniency(); refreshMode();
+  refreshCount(); refreshLeniency(); refreshMode(); refreshDue();
 
   $('start').addEventListener('click', async () => {
     // Must happen synchronously, before any await, or iOS never unlocks audio.
@@ -810,10 +931,27 @@
       $('msg').textContent = 'Enter at least one Chinese word.';
       return;
     }
+
+    // Shuffle the typed words FIRST — reviews are prepended afterwards so they
+    // genuinely come first, which is what the on-screen note promises.
     if ($('shuffle').checked) {
       for (let i = words.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [words[i], words[j]] = [words[j], words[i]];
+      }
+    }
+
+    // Fold due reviews in front of the session. Announced rather than silent —
+    // the user should never wonder why extra words appeared.
+    let mixed = 0;
+    if ($('autoMix').checked) {
+      const typed = new Set(words.map(w => w.join('')));
+      const due = srs.reviewWords(MIX_MAX + typed.size)
+                     .filter(w => !typed.has(w))
+                     .slice(0, MIX_MAX);
+      if (due.length) {
+        words = due.map(w => [...w]).concat(words);
+        mixed = due.length;
       }
     }
 
@@ -842,6 +980,7 @@
 
     const dictation = $('mode').value === 'dictation';
     const typing = $('mode').value === 'typing';
+    S.pendingMix = mixed;
     S.settings = {
       dictation, typing,
       hideWord: dictation || typing,      // both test recall, so never show the word
@@ -872,6 +1011,9 @@
     $('quiz').classList.remove('hidden');
     $('replay').classList.toggle('hidden', !S.settings.dictation);
     $('typeRow').classList.toggle('hidden', !S.settings.typing);
+    $('mixNote').textContent = S.pendingMix
+      ? `Including ${S.pendingMix} due review${S.pendingMix > 1 ? 's' : ''} first`
+      : '';
     $('again').classList.toggle('hidden', S.settings.typing);
     $('demo').textContent = S.settings.dictation || S.settings.typing ? 'Reveal' : 'Show me';
     renderWord(true);
@@ -1180,11 +1322,16 @@
     // but skip empty ones so quitting immediately cannot pollute the history.
     if (written > 0) {
       const perChar = {};
+      const graded = [];
       S.words.forEach((w, i) => w.forEach((ch, j) => {
         if (S.wordDone[i] || (i === S.wi && j < S.ci)) {
           perChar[ch] = (perChar[ch] || 0) + S.misses[i][j];
+          // A skipped character counts as missed — you never actually produced it.
+          graded.push({ char: ch, word: w.join(''),
+                        missed: S.misses[i][j] > 0 || S.skipped[i][j] });
         }
       }));
+      srs.grade(graded);
       history.add({
         t: Date.now(),
         mode: S.settings.typing ? 'typing' : S.settings.dictation ? 'dictation' : 'trace',
@@ -1258,6 +1405,7 @@
     const acc = s => (s.correct + s.mistakes) ? Math.round(s.correct / (s.correct + s.mistakes) * 100) : 0;
     const recent = ss.slice(-20);
     const best = Math.max(...ss.map(acc));
+    const sc = srs.counts();
 
     // trouble characters: most-missed, and only ones actually missed
     const trouble = Object.entries(d.chars)
@@ -1287,6 +1435,14 @@
         <span>zero baseline · 100% at full height · green ≥ 85%</span>
         <span>newest</span></div>
 
+      <h2>Review schedule</h2>
+      <div class="stats" style="margin-bottom:22px">
+        <div class="stat"><b>${sc.due}</b><span>due now</span></div>
+        <div class="stat"><b>${sc.learning}</b><span>still learning</span></div>
+        <div class="stat"><b>${sc.known}</b><span>well known</span></div>
+        <div class="stat"><b>${sc.total}</b><span>characters tracked</span></div>
+      </div>
+
       <h2>Characters to work on</h2>
       ${trouble.length ? `<div class="chips">${trouble.map(([ch, e]) => `
         <div class="chip">
@@ -1309,11 +1465,11 @@
           <td class="num">${mmss(s.secs)}</td>
         </tr>`).join('')}
       </table>
-      <div class="row"><button id="clearHistory">Clear history</button></div>`;
+      <div class="row"><button id="clearHistory">Clear history &amp; schedule</button></div>`;
 
     const clr = $('clearHistory');
     if (clr) clr.addEventListener('click', () => {
-      if (clr.dataset.armed) { history.clear(); renderHistory(); return; }
+      if (clr.dataset.armed) { history.clear(); srs.clear(); renderHistory(); refreshDue(); return; }
       clr.dataset.armed = '1';
       clr.textContent = 'Click again to erase everything';
     });
@@ -1329,6 +1485,7 @@
   $('closeHistory').addEventListener('click', () => {
     $('history').classList.add('hidden');
     $('setup').classList.remove('hidden');
+    refreshDue();
   });
 
   $('retry').addEventListener('click', () => begin(S.words));
@@ -1336,6 +1493,7 @@
   $('edit').addEventListener('click', () => {
     $('results').classList.add('hidden');
     $('setup').classList.remove('hidden');
+    refreshDue();
   });
 
 })();

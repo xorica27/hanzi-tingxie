@@ -38,6 +38,22 @@ replays the audio.
   buzz, per-character chime, per-word arpeggio, closing fanfare. Mutable.
 - Responsive and touch-friendly
 
+## Spaced repetition
+
+Missed characters come back on their own. Every character you attempt is graded into a
+Leitner box; a miss (or a skip) drops it to box 1 and makes it **due immediately**, while
+a clean pass promotes it and pushes it further out:
+
+| Box | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| Next due | now | 20 min | 1 day | 3 days | 7 days | 21 days |
+
+Due characters surface two ways: a banner on the setup screen with a **Review them**
+button, and — with *Mix in due reviews* on — up to three due words folded to the front of
+whatever session you start. The mix is always announced on screen rather than done
+silently. Reviews use the word the character was first met in, so you practise 学习
+rather than a bare 学.
+
 ## Progress
 
 **📊 Progress** (on the setup and results screens) keeps a history of every finished
@@ -55,7 +71,7 @@ browser data — or opening the page in private mode — loses it.
 ## Theme
 
 The button in the top right cycles **auto → light → dark**, remembered between visits.
-Auto follows your OS setting.
+**Light is the default**, including on a dark-mode OS; pick *Auto* to follow the system.
 
 Light mode is styled as 宣纸 rice paper: a warm pulp ground with fibre tooth, an uneven
 wash, sumi-ink text and a 朱砂 vermilion accent for the active writing square. The
