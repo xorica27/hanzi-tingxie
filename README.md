@@ -36,7 +36,10 @@ replays the audio.
   never dead-ends you
 - Synthesised sound effects (Web Audio — no audio files): per-stroke blip, mistake
   buzz, per-character chime, per-word arpeggio, closing fanfare. Mutable.
-- Responsive and touch-friendly
+- Responsive and touch-friendly: verified at 375×812 with no horizontal page scroll on
+  any screen. Writing squares lay out on a grid whose column count is chosen so a wrapped
+  word splits evenly (four characters read 2×2, not 3+1), and `touch-action: none` keeps
+  the page from scrolling under your finger mid-stroke.
 
 ## Spaced repetition
 

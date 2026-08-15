@@ -199,8 +199,8 @@
   .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-bottom: 24px; }
   .track > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s ease; }
 
-  #stage { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
-           margin-bottom: 20px; align-items: flex-start; }
+  #stage { display: grid; justify-content: center; justify-items: center;
+           gap: 14px; margin-bottom: 20px; }
   .slot { display: flex; flex-direction: column; align-items: center; gap: 7px; }
   /* pinyin caption tracks its cell's state via the adjacent-sibling selector,
      so cell state stays the single source of truth */
@@ -302,6 +302,34 @@
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
        color: var(--muted); font-weight: 600; margin: 0 0 8px; }
   .empty { color: var(--muted); font-size: 14px; padding: 6px 0 18px; }
+
+  /* A wide table must scroll inside its own box — never let it widen the page. */
+  .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 4px; }
+  .tablewrap table { min-width: 380px; }
+  .tablewrap td, .tablewrap th { white-space: nowrap; }
+
+  /* ---------- phones ---------- */
+  @media (max-width: 480px) {
+    body { padding: 16px 10px 30px; }
+    .card { padding: 15px; border-radius: 10px; }
+    h1 { font-size: 18px; }
+    .sub { font-size: 12.5px; margin-bottom: 18px; }
+    .top { gap: 10px; }
+    #theme { padding: 6px 10px; font-size: 12px; }
+    textarea { font-size: 18px; min-height: 84px; }
+    .opts { gap: 14px 18px; margin: 14px 0 16px; padding-top: 14px; }
+    .controls { gap: 8px; }
+    .controls button { padding: 8px 12px; font-size: 13.5px; }
+    #stage { gap: 10px; }
+    .stats { gap: 16px 20px; }
+    .stat b { font-size: 22px; }
+    .chart { height: 68px; }
+    .axis { font-size: 10px; }
+    .axis span:nth-child(2) { display: none; }   /* the legend crowds a phone */
+    .reviewbar { padding: 9px 11px; }
+    .bar { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .bar .pos { font-size: 12px; }
+  }
 
   .hidden { display: none !important; }
 </style>
@@ -445,7 +473,7 @@
   <section id="results" class="card hidden">
     <h1 style="margin-bottom:16px">Done</h1>
     <div class="stats" id="stats"></div>
-    <table id="breakdown"></table>
+    <div class="tablewrap"><table id="breakdown"></table></div>
     <div class="row">
       <button class="primary" id="retry">Practise again</button>
       <button id="edit">Change words</button>
@@ -1041,6 +1069,13 @@
     const c = palette();
     const readings = S.settings.showPinyin ? py.chars(word) : word.map(() => '');
 
+    // Choose the column count so a wrapped word splits evenly: four squares on
+    // a phone should read 2×2, not 3+1, which is what plain flex-wrap gives.
+    const gap = parseFloat(getComputedStyle(stage).columnGap) || 14;
+    const fit = Math.max(1, Math.floor(((stage.clientWidth || 700) + gap) / (size + gap)));
+    const cols = Math.ceil(word.length / Math.ceil(word.length / Math.min(fit, word.length)));
+    stage.style.gridTemplateColumns = `repeat(${cols}, auto)`;
+
     word.forEach((char, i) => {
       const slot = document.createElement('div');
       slot.className = 'slot';
@@ -1453,7 +1488,7 @@
         : `<p class="empty">Nothing yet — no character has tripped you up.</p>`}
 
       <h2>Sessions</h2>
-      <table>
+      <div class="tablewrap"><table>
         <tr><th>When</th><th>Mode</th><th class="num">Words</th><th class="num">Chars</th>
             <th class="num">Accuracy</th><th class="num">Time</th></tr>
         ${ss.slice().reverse().slice(0, 30).map(s => `<tr>
@@ -1464,7 +1499,7 @@
           <td class="num">${acc(s)}%</td>
           <td class="num">${mmss(s.secs)}</td>
         </tr>`).join('')}
-      </table>
+      </table></div>
       <div class="row"><button id="clearHistory">Clear history &amp; schedule</button></div>`;
 
     const clr = $('clearHistory');
