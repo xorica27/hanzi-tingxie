@@ -269,6 +269,28 @@
   .stat b { display: block; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .stat span { font-size: 12px; color: var(--muted); }
 
+  /* ---------- progress ---------- */
+  .chart { display: flex; align-items: flex-end; gap: 3px; height: 84px;
+           padding: 8px 0 0; margin-bottom: 6px; }
+  /* Bars keep a zero baseline (so the height is honest), but real accuracy
+     clusters in a narrow band — colour carries the trend that height cannot. */
+  .chart i { flex: 1 1 0; min-width: 3px; max-width: 46px; border-radius: 3px 3px 0 0;
+             background: var(--accent); opacity: .55; display: block; }
+  .chart i.mid  { opacity: .85; }
+  .chart i.good { background: var(--ok); opacity: .9; }
+  .axis { display: flex; justify-content: space-between; font-size: 11px;
+          color: var(--muted); margin-bottom: 22px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .chip { display: flex; flex-direction: column; align-items: center; gap: 1px;
+          border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px;
+          background-color: var(--panel); min-width: 62px; }
+  .chip b { font-size: 21px; font-family: "PingFang SC","Hiragino Sans GB",sans-serif; }
+  .chip span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip .cpy { font-size: 10px; color: var(--muted); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+  .empty { color: var(--muted); font-size: 14px; padding: 6px 0 18px; }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -364,6 +386,7 @@
     <div class="row">
       <button class="primary" id="start">Start quiz</button>
       <button type="button" id="random">🎲 Random 5</button>
+      <button type="button" id="showHistory">📊 Progress</button>
       <span class="hint" id="count"></span>
     </div>
     <div class="msg" id="msg"></div>
@@ -404,7 +427,17 @@
       <button class="primary" id="retry">Practise again</button>
       <button id="edit">Change words</button>
       <button id="retryMissed">Redo the ones I missed</button>
+      <button id="showHistory2">📊 Progress</button>
     </div>
+  </section>
+
+  <!-- ============ PROGRESS ============ -->
+  <section id="history" class="card hidden">
+    <div class="bar" style="margin-bottom:18px">
+      <h1 style="margin:0">Your progress</h1>
+      <button id="closeHistory">← Back</button>
+    </div>
+    <div id="histBody"></div>
   </section>
 
 </div>
@@ -422,6 +455,60 @@
     get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
   };
+
+  /* ---------- progress history ----------
+     Stored in localStorage, so it is per-browser and private to this device —
+     there is no server and therefore no cross-user leaderboard. Every read is
+     defensive: a corrupt or foreign value must never break the quiz. */
+  const history = (() => {
+    const KEY = 'hq-history', MAX = 200;
+    const empty = { v: 1, sessions: [], chars: {} };
+
+    const load = () => {
+      const raw = store.get(KEY);
+      if (!raw) return { ...empty, sessions: [], chars: {} };
+      try {
+        const d = JSON.parse(raw);
+        return {
+          v: 1,
+          sessions: Array.isArray(d.sessions) ? d.sessions.filter(s => s && typeof s.t === 'number') : [],
+          chars: (d.chars && typeof d.chars === 'object') ? d.chars : {},
+        };
+      } catch (e) { return { ...empty, sessions: [], chars: {} }; }
+    };
+
+    const save = d => store.set(KEY, JSON.stringify(d));
+
+    return {
+      load,
+      clear: () => store.set(KEY, JSON.stringify(empty)),
+      /** @param s {{mode,words,chars,mistakes,correct,secs,flawless}} */
+      add(s, perChar) {
+        const d = load();
+        d.sessions.push(s);
+        if (d.sessions.length > MAX) d.sessions = d.sessions.slice(-MAX);
+        for (const [ch, miss] of Object.entries(perChar)) {
+          const e = d.chars[ch] || { miss: 0, seen: 0 };
+          e.miss += miss; e.seen += 1;
+          d.chars[ch] = e;
+        }
+        save(d);
+      },
+      /** Consecutive calendar days ending today or yesterday. */
+      streak(sessions) {
+        if (!sessions.length) return 0;
+        const days = new Set(sessions.map(s => new Date(s.t).toDateString()));
+        const d = new Date();
+        if (!days.has(d.toDateString())) {
+          d.setDate(d.getDate() - 1);
+          if (!days.has(d.toDateString())) return 0;
+        }
+        let n = 0;
+        while (days.has(d.toDateString())) { n++; d.setDate(d.getDate() - 1); }
+        return n;
+      },
+    };
+  })();
 
   /* ---------- word bank for 🎲 Random 5 ----------
      Every character here was checked against the hanzi-writer data index,
@@ -646,6 +733,7 @@
     skipped: [],        // skipped[wi][ci]
     wordDone: [],       // wordDone[wi] — word fully finished
     doneChars: 0,       // characters advanced past (incl. skipped)
+    correct: 0,         // correct attempts: strokes in 描红/听写, characters in 拼音
     settings: {},
     startedAt: 0,
     busy: false,        // true during the pause between characters
@@ -776,6 +864,7 @@
     S.skipped  = words.map(w => w.map(() => false));
     S.wordDone = words.map(() => false);
     S.doneChars = 0;
+    S.correct = 0;
     S.startedAt = Date.now();
 
     $('setup').classList.add('hidden');
@@ -893,6 +982,7 @@
       if (cells[S.ci]) cells[S.ci].className = 'cell done';
       if (S.writers[S.ci]) S.writers[S.ci].showCharacter();
       S.doneChars++;
+      S.correct++;
       S.ci++;
     }
     if (S.ci < word.length && cells[S.ci]) cells[S.ci].className = 'cell active';
@@ -937,6 +1027,7 @@
         updateChrome();
       },
       onCorrectStroke: ({ strokesRemaining }) => {
+        S.correct++;
         if (strokesRemaining) sfx.stroke();   // the completion sound covers the last one
         $('status').textContent = strokesRemaining
           ? `${strokesRemaining} stroke${strokesRemaining > 1 ? 's' : ''} to go`
@@ -1085,6 +1176,27 @@
     const perfect = S.words.filter((w, i) =>
       S.wordDone[i] && S.misses[i].every(m => m === 0) && S.skipped[i].every(s => !s)).length;
 
+    // Record even a quit-early session — partial practice is still progress —
+    // but skip empty ones so quitting immediately cannot pollute the history.
+    if (written > 0) {
+      const perChar = {};
+      S.words.forEach((w, i) => w.forEach((ch, j) => {
+        if (S.wordDone[i] || (i === S.wi && j < S.ci)) {
+          perChar[ch] = (perChar[ch] || 0) + S.misses[i][j];
+        }
+      }));
+      history.add({
+        t: Date.now(),
+        mode: S.settings.typing ? 'typing' : S.settings.dictation ? 'dictation' : 'trace',
+        words: S.words.filter((w, i) => S.wordDone[i]).length,
+        chars: written,
+        mistakes: totalMisses,
+        correct: S.correct,
+        secs,
+        flawless: perfect,
+      }, perChar);
+    }
+
     $('stats').innerHTML = `
       <div class="stat"><b>${written}</b><span>characters written</span></div>
       <div class="stat"><b>${totalMisses}</b><span>mistakes</span></div>
@@ -1121,6 +1233,103 @@
     $('quiz').classList.add('hidden');
     $('results').classList.remove('hidden');
   }
+
+  /* ================= progress ================= */
+
+  const MODE_NAME = { trace: '描红', dictation: '听写', typing: '拼音' };
+  const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  function renderHistory() {
+    const d = history.load();
+    const ss = d.sessions;
+
+    if (!ss.length) {
+      $('histBody').innerHTML =
+        `<p class="empty">No sessions recorded yet — finish a quiz and it will show up here.</p>` +
+        (store.get('hq-theme') === null && !store.get('hq-history')
+          ? `<p class="empty">If this stays empty after finishing a quiz, your browser is
+             blocking local storage for this page (private mode, or opening the file
+             directly with <code>file://</code> in Safari).</p>` : '');
+      return;
+    }
+
+    const sum = k => ss.reduce((a, s) => a + (s[k] || 0), 0);
+    const acc = s => (s.correct + s.mistakes) ? Math.round(s.correct / (s.correct + s.mistakes) * 100) : 0;
+    const recent = ss.slice(-20);
+    const best = Math.max(...ss.map(acc));
+
+    // trouble characters: most-missed, and only ones actually missed
+    const trouble = Object.entries(d.chars)
+      .filter(([, e]) => e.miss > 0)
+      .sort((a, b) => (b[1].miss / b[1].seen) - (a[1].miss / a[1].seen) || b[1].miss - a[1].miss)
+      .slice(0, 12);
+
+    $('histBody').innerHTML = `
+      <div class="stats">
+        <div class="stat"><b>${ss.length}</b><span>sessions</span></div>
+        <div class="stat"><b>${sum('chars')}</b><span>characters written</span></div>
+        <div class="stat"><b>${best}%</b><span>best accuracy</span></div>
+        <div class="stat"><b>${history.streak(ss)}</b><span>day streak</span></div>
+        <div class="stat"><b>${mmss(sum('secs'))}</b><span>total time</span></div>
+      </div>
+
+      <h2>Accuracy — last ${recent.length} session${recent.length > 1 ? 's' : ''}</h2>
+      <div class="chart">
+        ${recent.map(s => {
+          const a = acc(s);
+          const band = a >= 85 ? 'good' : a >= 70 ? 'mid' : '';
+          return `<i class="${band}" style="height:${Math.max(4, a)}%"
+                     title="${new Date(s.t).toLocaleDateString()} · ${MODE_NAME[s.mode] || s.mode} · ${a}%"></i>`;
+        }).join('')}
+      </div>
+      <div class="axis"><span>oldest</span>
+        <span>zero baseline · 100% at full height · green ≥ 85%</span>
+        <span>newest</span></div>
+
+      <h2>Characters to work on</h2>
+      ${trouble.length ? `<div class="chips">${trouble.map(([ch, e]) => `
+        <div class="chip">
+          <b>${esc(ch)}</b>
+          <span class="cpy">${esc(py.word(ch))}</span>
+          <span>${e.miss} miss${e.miss > 1 ? 'es' : ''} / ${e.seen}×</span>
+        </div>`).join('')}</div>`
+        : `<p class="empty">Nothing yet — no character has tripped you up.</p>`}
+
+      <h2>Sessions</h2>
+      <table>
+        <tr><th>When</th><th>Mode</th><th class="num">Words</th><th class="num">Chars</th>
+            <th class="num">Accuracy</th><th class="num">Time</th></tr>
+        ${ss.slice().reverse().slice(0, 30).map(s => `<tr>
+          <td>${new Date(s.t).toLocaleDateString()} ${new Date(s.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+          <td>${MODE_NAME[s.mode] || s.mode}</td>
+          <td class="num">${s.words}</td>
+          <td class="num">${s.chars}</td>
+          <td class="num">${acc(s)}%</td>
+          <td class="num">${mmss(s.secs)}</td>
+        </tr>`).join('')}
+      </table>
+      <div class="row"><button id="clearHistory">Clear history</button></div>`;
+
+    const clr = $('clearHistory');
+    if (clr) clr.addEventListener('click', () => {
+      if (clr.dataset.armed) { history.clear(); renderHistory(); return; }
+      clr.dataset.armed = '1';
+      clr.textContent = 'Click again to erase everything';
+    });
+  }
+
+  const openHistory = () => {
+    ['setup', 'quiz', 'results'].forEach(id => $(id).classList.add('hidden'));
+    $('history').classList.remove('hidden');
+    renderHistory();
+  };
+  $('showHistory').addEventListener('click', openHistory);
+  $('showHistory2').addEventListener('click', openHistory);
+  $('closeHistory').addEventListener('click', () => {
+    $('history').classList.add('hidden');
+    $('setup').classList.remove('hidden');
+  });
 
   $('retry').addEventListener('click', () => begin(S.words));
   $('retryMissed').addEventListener('click', () => begin(S.missedWords));

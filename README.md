@@ -38,6 +38,20 @@ replays the audio.
   buzz, per-character chime, per-word arpeggio, closing fanfare. Mutable.
 - Responsive and touch-friendly
 
+## Progress
+
+**📊 Progress** (on the setup and results screens) keeps a history of every finished
+session: headline totals, an accuracy trend for the last 20 sessions, a day streak, and
+a "characters to work on" list ranked by how often each one trips you up.
+
+Accuracy is `correct ÷ (correct + mistakes)`, where "correct" counts strokes in 描红 and
+听写 but characters in 拼音 — so compare rows within a mode, not across them. The mode is
+shown on every row.
+
+History lives in `localStorage`, so it is **per-browser and private to this device**.
+There is no server, which also means there is no cross-user leaderboard. Clearing your
+browser data — or opening the page in private mode — loses it.
+
 ## Theme
 
 The button in the top right cycles **auto → light → dark**, remembered between visits.
